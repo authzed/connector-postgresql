@@ -10,14 +10,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/authzed/connector-postgres/pkg/cmd/run"
-
 	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/ory/dockertest/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
 
+	"github.com/authzed/connector-postgres/pkg/cmd/run"
 	"github.com/authzed/connector-postgres/pkg/streams"
 )
 
@@ -31,7 +30,7 @@ func TestSchemaReflection(t *testing.T) {
 	o.PostgresURI = connString
 	o.DryRun = true
 	require.NoError(json.Unmarshal(testMapping, &o.Mapping))
-	ctx, _ := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: o.Out})
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
 	go func() {
@@ -57,9 +56,10 @@ func TestSchemaReflection(t *testing.T) {
 			`, 3+i, 3+i))
 			require.NoError(err)
 		}
-		// cancel()
+		cancel()
 	}()
-	require.NoError(run.RunFunc(ctx, o)(nil, nil))
+	require.NoError(o.Complete())
+	require.NoError(o.Run(ctx))
 }
 
 func postgres(require *require.Assertions, creds string, portNum uint16) (*pgxpool.Pool, string, func()) {
