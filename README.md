@@ -1,6 +1,8 @@
 # SpiceDB Postgres Connector - Under Construction
 
-**WARNING**: This is exploratory, and the current implementation has serious flaws that mean the connector should not be run in production.
+**WARNING**: This is exploratory, and the current implementation has [serious flaws](https://github.com/authzed/connector-postgres/issues/1) that mean the connector should not be run in production.
+
+No guarantees are made for the stability of the CLI interface or the format of config files.
 
 ## Quickstart (Example)
 
