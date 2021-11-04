@@ -1,169 +1,108 @@
 # SpiceDB Postgres Connector - Under Construction
 
-**WARNING**: This is exploratory, and the current implementation has [serious flaws](https://github.com/authzed/connector-postgres/issues/1) that mean the connector should not be run in production.
+[![GoDoc](https://godoc.org/github.com/authzed/connector-postgresql?status.svg "Go documentation")](https://godoc.org/github.com/authzed/connector-postgresql)
+[![Discord Server](https://img.shields.io/discord/844600078504951838?color=7289da&logo=discord "Discord Server")](https://discord.gg/jTysUaxXzM)
+[![Twitter](https://img.shields.io/twitter/follow/authzed?color=%23179CF0&logo=twitter&style=flat-square "@authzed on Twitter")](https://twitter.com/authzed)
+
+`connector-postgresql` is a tool that translates data from postgres databases into SpiceDB relationships.
 
 No guarantees are made for the stability of the CLI interface or the format of config files.
 
-## Quickstart (Example)
+See [CONTRIBUTING.md] for instructions on how to contribute and perform common tasks like building the project and running tests.
 
-Generate a config based on an existing postgres instance:
+[CONTRIBUTING.md]: CONTRIBUTING.md
 
-```sh
-$ postgresconnector config --postgres="postgres://postgres:secret@localhost:55172/db25cf8fbe?sslmode=disable" > config.json
-```
+## Getting Started
 
-This will generate a best-effort syncing config based on your database schema:
+`connector-postgresql import` will connect to postgres, generate an example schema and config to map postgres data into SpiceDB, and then attempt to sync that data into SpiceDB as relationships.
 
-```json
-{
-  "article": [],
-  "article_tag": [
-    {
-      "resource_type": "article_tag",
-      "subject_type": "article",
-      "relation": "fk_article",
-      "resource_id_cols": [
-        "article_id",
-        "tag_id"
-      ],
-      "subject_id_cols": [
-        "article_id"
-      ]
-    },
-    {
-      "resource_type": "article_tag",
-      "subject_type": "tag",
-      "relation": "fk_tag",
-      "resource_id_cols": [
-        "article_id",
-        "tag_id"
-      ],
-      "subject_id_cols": [
-        "tag_id"
-      ]
-    }
-  ],
-  "contacts": [
-    {
-      "resource_type": "contacts",
-      "subject_type": "customers",
-      "relation": "fk_customer",
-      "resource_id_cols": [
-        "contact_id"
-      ],
-      "subject_id_cols": [
-        "customer_id",
-        "customer_name"
-      ]
-    }
-  ],
-  "customers": [],
-  "tag": []
-}
-```
+By default, it will dry-run to show you what would be synced.
 
-This config is generated based on foreign keys. We'll modify it to make the relationships we want:
+It can also be run as two stages: one to generate an example schema and config, and one to actually import relationships based on that config.
 
-```json
-{
-  "article_tag": [
-    {
-      "resource_type": "article",
-      "subject_type": "tags",
-      "relation": "tags",
-      "resource_id_cols": [
-        "article_id"
-      ],
-      "subject_id_cols": [
-        "tag_id"
-      ]
-    },
-    {
-      "resource_type": "tags",
-      "subject_type": "article",
-      "relation": "article",
-      "resource_id_cols": [
-        "tag_id"
-      ],
-      "subject_id_cols": [
-        "article_id"
-      ]
-    }
-  ],
-  "contacts": [
-    {
-      "resource_type": "contacts",
-      "subject_type": "customers",
-      "relation": "customer",
-      "resource_id_cols": [
-        "contact_id"
-      ],
-      "subject_id_cols": [
-        "customer_id",
-        "customer_name"
-      ]
-    }
-  ],
-}
-```
-
-The above says:
- - Rows of the `article_tag` join table will generate two relationships, one from `article->tag` and one froom `tag->article`. 
- - Rows of the `contacts` table will generate one relationship from the `contacts` definition to the `customers` definition.
-
-Note that we removed unused tables from the config, and we also renamed the generated relationship name for `contacts#customer`.
-
-
-We need a corresponding zed schema so that these translated relationships can be written to SpiceDB:
-
-```zed
-definition contacts {
-    relation customer: customers
-}
-
-definition customers {}
-
-definition article {
-    relation tags: tags
-}
-
-definition tags {
-    relation article: article
-}
-```
-
-That schema is written to spicedb:
+### Auto-Import
 
 ```sh
-zed schema write schema.zed
+$ connector-postgresql import --dry-run=false --spicedb-endpoint=localhost:50051 --spicedb-token=somesecretkeyhere --spicedb-insecure=true "postgres://postgres:secret@localhost:5432/mydb?sslmode=disable"
 ```
+- Prints out a zed schema + a config mapping from pg to SpiceDB 
+- Appends the generated zed schema to SpiceDB's schema
+- Mirrors all relationships into SpiceDB according to that config
 
-And then we can run the bulk-import from postgres:
+### Dry-Run
 
 ```sh
-$ postgresconnector import --spicedb-endpoint="localhost:50051" --spicedb-token="somerandomkeyhere" --spicedb-insecure=true --config=config.json --postgres="postgres://postgres:secret@localhost:55193/db33e9318d?sslmode=disable"
-10:27AM INF set log level new level=info
-10:27AM INF connecting to postgres database=db33e9318d host=localhost user=postgres
-10:27AM INF writing relationships table=article_tag
-10:27AM INF writing relationships table=contacts
+$ connector-postgresql import --spicedb-endpoint=localhost:50051 --spicedb-token=somesecretkeyhere --spicedb-insecure=true "postgres://postgres:secret@localhost:5432/mydb?sslmode=disable"
 ```
+- Prints out a zed schema + a config mapping from pg to SpiceDB
+- Logs relationships that would have been written to SpiceDB
 
-You can see more details with `--log-level=trace`, and you can see what relationships would have been written without syncing to spicedb with `--dry-run`:
+### Custom Config
 
 ```sh
-$ postgresconnector import --dry-run --config=config.json --postgres="postgres://postgres:secret@localhost:55193/db33e9318d?sslmode=disable"
-9:52AM INF set log level new level=info
-9:52AM INF connecting to postgres database=db33e9318d host=localhost user=postgres
-9:52AM INF OPERATION_TOUCH rel=tag:1#article@article:1
-9:52AM INF OPERATION_TOUCH rel=tag:1#article@article:2
-9:52AM INF OPERATION_TOUCH rel=tag:2#article@article:1
-9:52AM INF OPERATION_TOUCH rel=article:1#tag@tag:1
-9:52AM INF OPERATION_TOUCH rel=article:1#tag@tag:2
-9:52AM INF OPERATION_TOUCH rel=article:2#tag@tag:1
-9:52AM INF OPERATION_TOUCH rel=contacts:1#customer@customers:1_BigCo
-9:52AM INF OPERATION_TOUCH rel=contacts:2#customer@customers:1_BigCo
-9:52AM INF OPERATION_TOUCH rel=contacts:3#customer@customers:2_SmallFry
-9:52AM INF OPERATION_TOUCH rel=contacts:4#customer@customers:2_SmallFry
-9:52AM INF OPERATION_TOUCH rel=contacts:5#customer@customers:2_SmallFry
-9:52AM INF OPERATION_TOUCH rel=contacts:6#customer@customers:2_SmallFry
+$ connector-postgresql import --config=config.yaml --spicedb-endpoint=localhost:50051 --spicedb-token=somesecretkeyhere --spicedb-insecure=true "postgres://postgres:secret@localhost:5432/mydb?sslmode=disable"
+```
+- Uses the provided `config.yaml` to write relationships into SpiceDB
+- If the required schema is already in SpiceDB, skip appending it with `--append-schema=false`
+
+#### Example `config.yaml`
+
+```yaml
+schema: |2
+  definition customer {}
+
+  definition contact {
+      relation customer: customer
+  }
+
+  definition article {
+      relation tags: tags
+  }
+
+  definition tags {
+      relation article: article
+  }
+tables:
+# for each row in the contacts table
+- name: contacts
+  relationships:
+  # generate a relationship contact:<contact_id>#customer@customer:<customer_id>_<customer_name>
+  - resource_type: contact
+    resource_id_cols:
+    - contact_id
+    relation: customer
+    subject_type: customer
+    subject_id_cols:
+    - customer_id
+    - customer_name
+# for each row in the article_tag table (a join table from articles <-> tags)
+- name: article_tag
+  relationships:
+  # generate a relationship article:<article_id>#tags@tag:<tag_id>
+  - resource_type: article
+    resource_id_cols:
+    - article_id
+    relation: tags
+    subject_type: tags
+    subject_id_cols:
+    - tag_id
+  # generate a second relationship tags:<tag_id>#article@article:<article_id>
+  - resource_type: tags
+    resource_id_cols:
+    - tag_id
+    relation: article
+    subject_type: article
+    subject_id_cols:
+    - article_id
+```
+
+## Connect Quickstart
+
+**WARNING**: This is exploratory, and the current implementation has [serious flaws](https://github.com/authzed/connector-postgresql/issues/1) that mean the connector should not be run in production.
+
+The connector can be run continuously with `connector-postgresql run`. 
+Running the connector will first run a full import via `connector-postgresql import`, but then it will follow the postgres replication log and sync data as it changes.
+
+```sh
+$ connector-postgresql run --dry-run=false --spicedb-endpoint=localhost:50051 --spicedb-token=somesecretkeyhere --spicedb-insecure=true "postgres://postgres:secret@localhost:5432/mydb?sslmode=disable"
 ```

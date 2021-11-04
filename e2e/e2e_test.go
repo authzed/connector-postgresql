@@ -2,34 +2,41 @@ package e2e
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
+	_ "embed"
 	"fmt"
-	"strings"
 	"testing"
 	"time"
 
+	v1 "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/ory/dockertest/v3"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"sigs.k8s.io/yaml"
 
-	"github.com/authzed/connector-postgres/pkg/cmd/run"
-	"github.com/authzed/connector-postgres/pkg/streams"
+	"github.com/authzed/connector-postgresql/pkg/cmd/importer"
+	"github.com/authzed/connector-postgresql/pkg/cmd/run"
+	"github.com/authzed/connector-postgresql/pkg/streams"
 )
+
+//go:embed fixtures/generated_config.yaml
+var generatedConfig string
+
+//go:embed fixtures/user_config.yaml
+var exampleUserConfig []byte
 
 func TestSchemaReflection(t *testing.T) {
 	require := require.New(t)
-	pg, port, cleanup := postgres(require, "postgres:secret", 5432)
-	defer cleanup()
-	connString := newTestDB(require, pg, "postgres:secret", port)
-	t.Log(connString)
+	pg, port := postgres(t, "postgres:secret", 5432)
+	connString := newTestDB(t, pg, "postgres:secret", port)
+
 	o := run.NewOptions(streams.NewStdIO())
 	o.PostgresURI = connString
 	o.DryRun = true
-	require.NoError(json.Unmarshal(testMapping, &o.Mapping))
+	require.NoError(yaml.Unmarshal(exampleUserConfig, &o.Config))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: o.Out})
 	zerolog.SetGlobalLevel(zerolog.TraceLevel)
@@ -45,7 +52,7 @@ func TestSchemaReflection(t *testing.T) {
 			require.NoError(err)
 
 			_, err = testpool.Exec(context.Background(), fmt.Sprintf(`
-				INSERT INTO tag(tag_value)
+				INSERT INTO tags(tag_value)
 				VALUES('new_genre_%d');
 			`, i))
 			require.NoError(err)
@@ -58,165 +65,70 @@ func TestSchemaReflection(t *testing.T) {
 		}
 		cancel()
 	}()
-	require.NoError(o.Complete())
+	require.NoError(o.Complete(ctx, []string{connString}))
 	require.NoError(o.Run(ctx))
 }
 
-func postgres(require *require.Assertions, creds string, portNum uint16) (*pgxpool.Pool, string, func()) {
-	pool, err := dockertest.NewPool("")
-	require.NoError(err)
+func TestImportAuto(t *testing.T) {
+	// connector-postgresql import --dry-run=false <spicedb config> psql://whatever
+	require := require.New(t)
+	pg, port := postgres(t, "postgres:secret", 5432)
+	connString := newTestDB(t, pg, "postgres:secret", port)
+	spiceClient := spicedb(t)
 
-	resource, err := pool.RunWithOptions(&dockertest.RunOptions{
-		Cmd:        strings.Split("postgres -c wal_level=logical -c max_wal_senders=5 -c max_replication_slots=5", " "),
-		Repository: "postgres",
-		Tag:        "11.13",
-		Env:        []string{"POSTGRES_PASSWORD=secret", "POSTGRES_DB=defaultdb"},
-	})
-	require.NoError(err)
+	testIO, _, ioout, _ := streams.NewTestIO()
+	o := importer.NewOptions(testIO)
+	o.PostgresURI = connString
+	o.AppendSchema = true
+	o.Client = spiceClient
 
-	var dbpool *pgxpool.Pool
-	port := resource.GetPort(fmt.Sprintf("%d/tcp", portNum))
-	require.NoError(pool.Retry(func() error {
-		var err error
-		dbpool, err = pgxpool.Connect(context.Background(), fmt.Sprintf("postgres://%s@localhost:%s/defaultdb?sslmode=disable", creds, port))
-		if err != nil {
-			return err
-		}
-		return nil
-	}))
-
-	cleanup := func() {
-		require.NoError(pool.Purge(resource))
-	}
-
-	return dbpool, port, cleanup
+	require.NoError(o.Complete(context.Background(), []string{connString}))
+	require.NoError(o.Run(context.Background()))
+	require.Equal(generatedConfig, ioout.String())
 }
 
-func newTestDB(require *require.Assertions, pool *pgxpool.Pool, creds string, port string) string {
-	newDBName := "db" + tokenHex(require, 4)
-	_, err := pool.Exec(context.Background(), "CREATE DATABASE "+newDBName)
-	require.NoError(err)
+func TestImportDryRun(t *testing.T) {
+	// connector-postgresql import <spicedb config> psql://whatever
+	require := require.New(t)
+	pg, port := postgres(t, "postgres:secret", 5432)
+	connString := newTestDB(t, pg, "postgres:secret", port)
+	spiceClient := spicedb(t)
 
-	connectStr := fmt.Sprintf(
-		"postgres://%s@localhost:%s/%s?sslmode=disable",
-		creds,
-		port,
-		newDBName,
-	)
-	// fill with test data
-	schema := `
-CREATE TABLE customers(
-   customer_id INT GENERATED ALWAYS AS IDENTITY,
-   customer_name VARCHAR(255) NOT NULL,
-   PRIMARY KEY(customer_id, customer_name)
-);
+	testIO, _, ioout, _ := streams.NewTestIO()
+	o := importer.NewOptions(testIO)
+	o.PostgresURI = connString
+	o.AppendSchema = true
+	o.DryRun = true
+	o.Client = spiceClient
 
-CREATE TABLE contacts(
-   contact_id INT GENERATED ALWAYS AS IDENTITY,
-   customer_id INT,
-   customer_name VARCHAR(255) NOT NULL,
-   contact_name VARCHAR(255) NOT NULL,
-   phone VARCHAR(15),
-   email VARCHAR(100),
-   PRIMARY KEY(contact_id),
-   CONSTRAINT fk_customer
-      FOREIGN KEY(customer_id,customer_name) 
-	  REFERENCES customers(customer_id,customer_name)
-	  ON DELETE CASCADE
-);
+	require.NoError(o.Complete(context.Background(), []string{connString}))
+	require.NoError(o.Run(context.Background()))
+	require.Equal(generatedConfig, ioout.String())
 
-INSERT INTO customers(customer_name)
-VALUES('BigCo'),
-      ('SmallFry');	   
-	   
-INSERT INTO contacts(customer_id, customer_name, contact_name, phone, email)
-VALUES(1,'BigCo', 'John Doe','(408)-111-1234','john.doe@bigco.dev'),
-      (1,'BigCo','Jane Doe','(408)-111-1235','jane.doe@bigco.dev'),
-      (2,'SmallFry','Jeshk Doe','(408)-222-1234','jeshk.doe@smallfry.dev');
+	// Dry-Run, no schema or relationships written
+	_, err := spiceClient.ReadSchema(context.Background(), &v1.ReadSchemaRequest{})
+	require.Error(err)
+	require.Equal(status.Code(err), codes.NotFound)
 
-CREATE TABLE article (
-  id SERIAL PRIMARY KEY,
-  title TEXT
-);
-
-CREATE TABLE tag (
-  id SERIAL PRIMARY KEY,
-  tag_value TEXT
-);
-
-CREATE TABLE article_tag (
-  article_id INT,
-  tag_id INT,
-  PRIMARY KEY (article_id, tag_id),
-  CONSTRAINT fk_article FOREIGN KEY(article_id) REFERENCES article(id),
-  CONSTRAINT fk_tag FOREIGN KEY(tag_id) REFERENCES tag(id)
-);
-
-INSERT INTO article(title) 
-VALUES('Dune'), ('Lies of Lock Lamora');
-
-INSERT INTO tag(tag_value)
-VALUES('scifi'), ('fantasy');
-
-INSERT INTO article_tag(article_id,tag_id)
-VALUES(1,1), (1,2), (2,2);
-`
-
-	testpool, err := pgxpool.Connect(context.Background(), connectStr)
-	require.NoError(err)
-	_, err = testpool.Exec(context.Background(), schema)
-	require.NoError(err)
-
-	return connectStr
+	// TODO: test with pre-existing schema, assert no relationships written
 }
 
-func tokenHex(require *require.Assertions, nbytes uint8) string {
-	token := make([]byte, nbytes)
-	_, err := rand.Read(token)
-	require.NoError(err)
-	return hex.EncodeToString(token)
-}
+func TestImportUserProvidedConfig(t *testing.T) {
+	// connector-postgresql import <spicedb config> --config-path=path/to/config.json psql://whatever
+	require := require.New(t)
+	pg, port := postgres(t, "postgres:secret", 5432)
+	connString := newTestDB(t, pg, "postgres:secret", port)
+	spiceClient := spicedb(t)
 
-var testMapping = []byte(`{
-  "article": [],
-  "article_tag": [
-    {
-      "resource_type": "article",
-      "subject_type": "tags",
-      "relation": "tags",
-      "resource_id_cols": [
-        "article_id"
-      ],
-      "subject_id_cols": [
-        "tag_id"
-      ]
-    },
-    {
-      "resource_type": "tags",
-      "subject_type": "article",
-      "relation": "article",
-      "resource_id_cols": [
-        "tag_id"
-      ],
-      "subject_id_cols": [
-        "article_id"
-      ]
-    }
-  ],
-  "contacts": [
-    {
-      "resource_type": "contacts",
-      "subject_type": "customers",
-      "relation": "fk_customer",
-      "resource_id_cols": [
-        "contact_id"
-      ],
-      "subject_id_cols": [
-        "customer_id",
-        "customer_name"
-      ]
-    }
-  ],
-  "customers": [],
-  "tag": []
-}`)
+	testIO, _, ioout, _ := streams.NewTestIO()
+	o := importer.NewOptions(testIO)
+	o.PostgresURI = connString
+	o.AppendSchema = true
+	o.DryRun = false
+	require.NoError(yaml.Unmarshal(exampleUserConfig, &o.Config))
+
+	o.Client = spiceClient
+	require.NoError(o.Complete(context.Background(), []string{connString}))
+	require.NoError(o.Run(context.Background()))
+	fmt.Println(ioout.String())
+}

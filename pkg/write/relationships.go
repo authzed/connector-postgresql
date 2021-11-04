@@ -5,9 +5,10 @@ import (
 
 	"github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/authzed/authzed-go/v1"
-	"github.com/authzed/connector-postgres/pkg/util"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/authzed/connector-postgresql/pkg/util"
 )
 
 // RelationshipWriter writes v1 relationships
