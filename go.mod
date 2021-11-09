@@ -1,4 +1,4 @@
-module github.com/authzed/connector-postgres
+module github.com/authzed/connector-postgresql
 
 go 1.16
 
@@ -22,4 +22,5 @@ require (
 	github.com/prometheus/client_golang v1.11.0 // indirect
 	go.opentelemetry.io/otel/exporters/jaeger v1.0.0 // indirect
 	golang.org/x/sys v0.0.0-20210921065528-437939a70204 // indirect
+	sigs.k8s.io/yaml v1.3.0
 )

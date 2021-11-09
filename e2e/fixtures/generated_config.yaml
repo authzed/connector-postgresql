@@ -1,0 +1,49 @@
+schema: |2
+
+  definition customers {}
+
+  definition contacts {
+      relation fk_customer: customers
+  }
+
+  definition article {}
+
+  definition article_tag {
+      relation fk_article: article
+      relation fk_tag: tags
+  }
+
+  definition tags {}
+tables:
+- name: customers
+- name: contacts
+  relationships:
+  - relation: fk_customer
+    resource_id_cols:
+    - contact_id
+    resource_type: contacts
+    subject_id_cols:
+    - customer_id
+    - customer_name
+    subject_type: customers
+- name: article
+- name: article_tag
+  relationships:
+  - relation: fk_article
+    resource_id_cols:
+    - article_id
+    - tag_id
+    resource_type: article_tag
+    subject_id_cols:
+    - article_id
+    subject_type: article
+  - relation: fk_tag
+    resource_id_cols:
+    - article_id
+    - tag_id
+    resource_type: article_tag
+    subject_id_cols:
+    - tag_id
+    subject_type: tags
+- name: tags
+

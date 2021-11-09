@@ -1,8 +1,17 @@
 package config
 
+// Config holds a zed schema and a tablemapping that generates that schema
+type Config struct {
+	Tables []TableMapping `json:"tables"`
+	Schema string         `json:"schema"`
+}
+
 // TableMapping maps the name of a table to a set of configs for transforming
 // rows into relationships
-type TableMapping map[string][]RowMapping
+type TableMapping struct {
+	Name          string       `json:"name"`
+	Relationships []RowMapping `json:"relationships,omitempty"`
+}
 
 // RowMapping configures how to transform a row into a relationship
 type RowMapping struct {
@@ -15,7 +24,10 @@ type RowMapping struct {
 
 // InternalTableMapping is a TableMapping with table names converted into
 // internal postgres ids, so that it can be used to parse the replication log
-type InternalTableMapping map[uint32][]InternalRowMapping
+type InternalTableMapping struct {
+	TableID              uint32
+	RelationshipsByColID []InternalRowMapping
+}
 
 // InternalRowMapping is a RowMapping with column names converted into column
 // indexes, so that it can be used to parse the replication log

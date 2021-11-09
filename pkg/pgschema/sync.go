@@ -30,14 +30,14 @@ func SyncSchema(ctx context.Context, conn *pgxpool.Pool, includedTables ...strin
 		return nil, err
 	}
 
-	for name, t := range tables {
-		pks, err := syncPrimaryKeys(ctx, tx, name)
+	for _, t := range tables {
+		pks, err := syncPrimaryKeys(ctx, tx, t.Name)
 		if err != nil {
 			return nil, err
 		}
 		t.PrimaryKeys = *pks
 
-		cols, err := syncColIds(ctx, tx, name)
+		cols, err := syncColIds(ctx, tx, t.Name)
 		if err != nil {
 			return nil, err
 		}
@@ -48,8 +48,8 @@ func SyncSchema(ctx context.Context, conn *pgxpool.Pool, includedTables ...strin
 	if err != nil {
 		return nil, err
 	}
-	for name, t := range tables {
-		keys, ok := fks[name]
+	for _, t := range tables {
+		keys, ok := fks[t.Name]
 		if !ok {
 			continue
 		}
@@ -67,8 +67,8 @@ func SyncSchema(ctx context.Context, conn *pgxpool.Pool, includedTables ...strin
 	}, nil
 }
 
-func syncTables(ctx context.Context, tx pgx.Tx, includedTables []string) (map[string]*Table, error) {
-	tables := make(map[string]*Table, 0)
+func syncTables(ctx context.Context, tx pgx.Tx, includedTables []string) ([]*Table, error) {
+	tables := make([]*Table, 0)
 
 	expected := make(map[string]struct{}, len(includedTables))
 	for _, t := range includedTables {
@@ -101,12 +101,12 @@ func syncTables(ctx context.Context, tx pgx.Tx, includedTables []string) (map[st
 		if err != nil {
 			return nil, err
 		}
-		tables[name] = &Table{
+		tables = append(tables, &Table{
 			ID:          uint32(id),
 			Name:        name,
 			PrimaryKeys: PrimaryKey{cols: make([]string, 0)},
 			ForeignKeys: make([]ForeignKey, 0),
-		}
+		})
 		delete(expected, name)
 	}
 	if err := rows.Err(); err != nil {

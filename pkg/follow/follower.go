@@ -14,8 +14,8 @@ import (
 	"github.com/jackc/pgproto3/v2"
 	"github.com/rs/zerolog/log"
 
-	"github.com/authzed/connector-postgres/pkg/cache"
-	"github.com/authzed/connector-postgres/pkg/config"
+	"github.com/authzed/connector-postgresql/pkg/cache"
+	"github.com/authzed/connector-postgresql/pkg/config"
 )
 
 const pgOutputPlugin = "pgoutput"
@@ -28,16 +28,20 @@ type Follower interface {
 // WalFollower watches the WAL and writes changes into the cache
 type WalFollower struct {
 	conn    *pgconn.PgConn
-	mapping config.InternalTableMapping
+	mapping map[uint32][]config.InternalRowMapping
 	cache   *cache.Cache
 }
 
 // NewWalFollower creates a new WalFollower for postgres. The conn must be made
 // with the `replication` flag set.
-func NewWalFollower(conn *pgconn.PgConn, mapping config.InternalTableMapping, cache *cache.Cache) *WalFollower {
+func NewWalFollower(conn *pgconn.PgConn, mapping []config.InternalTableMapping, cache *cache.Cache) *WalFollower {
+	tableMap := make(map[uint32][]config.InternalRowMapping, 0)
+	for _, itm := range mapping {
+		tableMap[itm.TableID] = itm.RelationshipsByColID
+	}
 	return &WalFollower{
 		conn:    conn,
-		mapping: mapping,
+		mapping: tableMap,
 		cache:   cache,
 	}
 }

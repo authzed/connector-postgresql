@@ -1,0 +1,41 @@
+schema: |2
+  definition customer {}
+
+  definition contact {
+      relation customer: customer
+  }
+
+  definition article {
+      relation tags: tags
+  }
+
+  definition tags {
+      relation article: article
+  }
+tables:
+- name: contacts
+  relationships:
+  - resource_type: contact
+    resource_id_cols:
+    - contact_id
+    relation: customer
+    subject_type: customer
+    subject_id_cols:
+    - customer_id
+    - customer_name
+- name: article_tag
+  relationships:
+  - resource_type: article
+    resource_id_cols:
+    - article_id
+    relation: tags
+    subject_type: tags
+    subject_id_cols:
+    - tag_id
+  - resource_type: tags
+    resource_id_cols:
+    - tag_id
+    relation: article
+    subject_type: article
+    subject_id_cols:
+    - article_id

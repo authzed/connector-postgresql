@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/authzed/connector-postgres/pkg/config"
-	"github.com/authzed/connector-postgres/pkg/write"
-	"github.com/rs/zerolog/log"
-
 	v1 "github.com/authzed/authzed-go/proto/authzed/api/v1"
 	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/rs/zerolog/log"
+
+	"github.com/authzed/connector-postgresql/pkg/config"
+	"github.com/authzed/connector-postgresql/pkg/write"
 )
 
 // Importer is an interface satisfied by anything that can import data into
@@ -24,13 +24,13 @@ type Importer interface {
 type PostgresImporter struct {
 	conn    *pgxpool.Pool
 	writer  write.RelationshipWriter
-	mapping config.TableMapping
+	mapping []config.TableMapping
 }
 
 var _ Importer = &PostgresImporter{}
 
 // NewPostgresImporter returns a new instance of a postgres importer
-func NewPostgresImporter(conn *pgxpool.Pool, writer write.RelationshipWriter, mapping config.TableMapping) *PostgresImporter {
+func NewPostgresImporter(conn *pgxpool.Pool, writer write.RelationshipWriter, mapping []config.TableMapping) *PostgresImporter {
 	return &PostgresImporter{
 		conn:    conn,
 		writer:  writer,
@@ -40,18 +40,18 @@ func NewPostgresImporter(conn *pgxpool.Pool, writer write.RelationshipWriter, ma
 
 // Import walks through each table in the config and writes relationships
 func (i *PostgresImporter) Import(ctx context.Context) error {
-	for name := range i.mapping {
-		log.Info().Str("table", name).Msg("writing relationships")
-		if err := i.importTable(ctx, name); err != nil {
+	for _, m := range i.mapping {
+		log.Info().Str("table", m.Name).Msg("writing relationships")
+		if err := i.importTable(ctx, m); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (i *PostgresImporter) importTable(ctx context.Context, table string) error {
-	for _, rm := range i.mapping[table] {
-		if err := i.importRelationships(ctx, table, rm); err != nil {
+func (i *PostgresImporter) importTable(ctx context.Context, tableMap config.TableMapping) error {
+	for _, rm := range tableMap.Relationships {
+		if err := i.importRelationships(ctx, tableMap.Name, rm); err != nil {
 			return err
 		}
 	}
