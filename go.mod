@@ -9,18 +9,19 @@ require (
 	github.com/jackc/pglogrepl v0.0.0-20210731151948-9f1effd582c4
 	github.com/jackc/pgproto3/v2 v2.1.1
 	github.com/jackc/pgx/v4 v4.13.0
-	github.com/jzelinskie/cobrautil v0.0.5
-	github.com/rs/zerolog v1.25.0
+	github.com/jzelinskie/cobrautil v0.0.7
+	github.com/rs/zerolog v1.26.0
 	github.com/spf13/cobra v1.2.1
-	google.golang.org/grpc v1.41.0
+	google.golang.org/grpc v1.42.0
 )
 
 require (
-	github.com/jzelinskie/stringz v0.0.1 // indirect
 	github.com/lib/pq v1.10.3 // indirect
 	github.com/mattn/go-isatty v0.0.14
-	github.com/prometheus/client_golang v1.11.0 // indirect
-	go.opentelemetry.io/otel/exporters/jaeger v1.0.0 // indirect
-	golang.org/x/sys v0.0.0-20210921065528-437939a70204 // indirect
+	github.com/spf13/viper v1.9.0 // indirect
+	go.opentelemetry.io/otel/exporters/jaeger v1.1.0 // indirect
+	golang.org/x/net v0.0.0-20211109214657-ef0fda0de508 // indirect
+	golang.org/x/sys v0.0.0-20211109184856-51b60fd695b3 // indirect
+	google.golang.org/genproto v0.0.0-20211104193956-4c6863e31247 // indirect
 	sigs.k8s.io/yaml v1.3.0
 )
