@@ -41,7 +41,7 @@ func NewRunCmd(ctx context.Context, streams streams.IO) *cobra.Command {
 	cmd.Flags().StringVar(&o.MappingFile, "config", "", "path to a file containing the config that maps between pg tables and spicedb relationships")
 	cmd.Flags().BoolVar(&o.AppendSchema, "append-schema", true, "append the config's (zed) schema to the schema in spicedb")
 	cmd.Flags().StringVar(&o.MetricsAddr, "metrics-addr", ":9090", "address that will serve prometheus data (default: :9090")
-	cobrautil.RegisterZeroLogFlags(cmd.Flags())
+	cobrautil.RegisterZeroLogFlags(cmd.Flags(), "log")
 
 	return cmd
 }

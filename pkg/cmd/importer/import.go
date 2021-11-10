@@ -37,7 +37,7 @@ func NewImportCmd(ctx context.Context, streams streams.IO) *cobra.Command {
 	cmd.Flags().BoolVar(&o.DryRun, "dry-run", true, "print relationships that would be written to SpiceDB")
 	cmd.Flags().StringVar(&o.MappingFile, "config", "", "path to a file containing the config that maps between pg tables and spicedb relationships")
 	cmd.Flags().BoolVar(&o.AppendSchema, "append-schema", true, "append the config's (zed) schema to the schema in spicedb")
-	cobrautil.RegisterZeroLogFlags(cmd.Flags())
+	cobrautil.RegisterZeroLogFlags(cmd.Flags(), "log")
 
 	return cmd
 }
